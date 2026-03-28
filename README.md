@@ -23,7 +23,7 @@ Encapsula cada ventana, evitando que el cursor se descontrole perdiendo registro
 | F4    | Guardar layout |
 | F5    | Cargar layout |
 | F6    | Abrir gestor de layouts |
-| Ctrl+Alt+1..9 | Cargar layout directamente |
+| Ctrl+Alt+1..9 |  Cambiar a pesta;a directamente (Principalmente usado para compatibilidad con Dofus Tools |
 
 ## Instalación y Uso
 
