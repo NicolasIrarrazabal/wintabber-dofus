@@ -16,23 +16,34 @@ namespace DofusMiniTabber
         private readonly Button _deleteButton = new();
         private readonly Button _newButton = new();
         private readonly Button _cancelButton = new();
+        private readonly Button _setPreferredButton = new();
         private readonly Label _titleLabel = new();
         private readonly Label _nameLabel = new();
         private readonly Label _descriptionLabel = new();
+        private readonly Label _preferredLabel = new();
 
         public string? SelectedLayout { get; private set; }
         public bool ShouldLoad { get; private set; }
+        public bool PreferredLayoutChanged { get; private set; }
+        public string? NewPreferredLayout { get; private set; }
 
-        public LayoutSelectorForm()
+        private string? _currentPreferred;
+
+        public LayoutSelectorForm() : this(null) { }
+
+        public LayoutSelectorForm(string? currentPreferredLayout)
         {
+            _currentPreferred  = currentPreferredLayout;
+            NewPreferredLayout = currentPreferredLayout;
             InitializeComponents();
             LoadLayouts();
+            UpdatePreferredLabel();
         }
 
         private void InitializeComponents()
         {
             Text = "Gestor de Layouts - Wintabber Dofus";
-            Size = new Size(550, 450);
+            Size = new Size(550, 510);
             StartPosition = FormStartPosition.CenterParent;
             BackColor = Color.FromArgb(0x0F, 0x19, 0x23);
             Font = new Font("Segoe UI", 9F);
@@ -59,7 +70,7 @@ namespace DofusMiniTabber
 
             // Layouts List
             _layoutsListBox.Location = new Point(20, 80);
-            _layoutsListBox.Size = new Size(300, 250);
+            _layoutsListBox.Size = new Size(300, 240);
             _layoutsListBox.BackColor = Color.FromArgb(0x1E, 0x2A, 0x38);
             _layoutsListBox.ForeColor = Color.White;
             _layoutsListBox.BorderStyle = BorderStyle.FixedSingle;
@@ -107,7 +118,7 @@ namespace DofusMiniTabber
 
             // Buttons
             _newButton.Text = "NUEVO";
-            _newButton.Location = new Point(20, 350);
+            _newButton.Location = new Point(20, 415);
             _newButton.Size = new Size(90, 45);
             _newButton.BackColor = Color.FromArgb(0x17, 0xA2, 0xB8);
             _newButton.ForeColor = Color.White;
@@ -117,7 +128,7 @@ namespace DofusMiniTabber
             _newButton.Click += NewButton_Click;
 
             _saveButton.Text = "GUARDAR";
-            _saveButton.Location = new Point(120, 350);
+            _saveButton.Location = new Point(120, 415);
             _saveButton.Size = new Size(90, 45);
             _saveButton.BackColor = Color.FromArgb(0x28, 0xA7, 0x45);
             _saveButton.ForeColor = Color.White;
@@ -127,7 +138,7 @@ namespace DofusMiniTabber
             _saveButton.Click += SaveButton_Click;
 
             _loadButton.Text = "CARGAR";
-            _loadButton.Location = new Point(220, 350);
+            _loadButton.Location = new Point(220, 415);
             _loadButton.Size = new Size(90, 45);
             _loadButton.BackColor = Color.FromArgb(0x00, 0x7A, 0xCC);
             _loadButton.ForeColor = Color.White;
@@ -137,7 +148,7 @@ namespace DofusMiniTabber
             _loadButton.Click += LoadButton_Click;
 
             _deleteButton.Text = "ELIMINAR";
-            _deleteButton.Location = new Point(320, 350);
+            _deleteButton.Location = new Point(320, 415);
             _deleteButton.Size = new Size(90, 45);
             _deleteButton.BackColor = Color.FromArgb(0xDC, 0x35, 0x45);
             _deleteButton.ForeColor = Color.White;
@@ -147,7 +158,7 @@ namespace DofusMiniTabber
             _deleteButton.Click += DeleteButton_Click;
 
             _cancelButton.Text = "CERRAR";
-            _cancelButton.Location = new Point(420, 350);
+            _cancelButton.Location = new Point(420, 415);
             _cancelButton.Size = new Size(90, 45);
             _cancelButton.BackColor = Color.FromArgb(0x6C, 0x75, 0x7D);
             _cancelButton.ForeColor = Color.White;
@@ -156,10 +167,41 @@ namespace DofusMiniTabber
             _cancelButton.FlatAppearance.BorderSize = 0;
             _cancelButton.Click += CancelButton_Click;
 
+            // Preferred layout section
+            _preferredLabel.Text = "Preferido: (ninguno)";
+            _preferredLabel.ForeColor = Color.FromArgb(0xFF, 0xD7, 0x00);
+            _preferredLabel.Location = new Point(20, 335);
+            _preferredLabel.Size = new Size(300, 20);
+            _preferredLabel.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+
+            _setPreferredButton.Text = "⭐ MARCAR PREFERIDO";
+            _setPreferredButton.Location = new Point(20, 358);
+            _setPreferredButton.Size = new Size(200, 40);
+            _setPreferredButton.BackColor = Color.FromArgb(0x85, 0x59, 0x00);
+            _setPreferredButton.ForeColor = Color.FromArgb(0xFF, 0xD7, 0x00);
+            _setPreferredButton.FlatStyle = FlatStyle.Flat;
+            _setPreferredButton.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            _setPreferredButton.FlatAppearance.BorderSize = 0;
+            _setPreferredButton.Click += SetPreferredButton_Click;
+
+            var clearPreferredButton = new Button
+            {
+                Text = "✖ QUITAR PREFERIDO",
+                Location = new Point(228, 358),
+                Size = new Size(170, 40),
+                BackColor = Color.FromArgb(0x3A, 0x2A, 0x00),
+                ForeColor = Color.FromArgb(0xFF, 0xD7, 0x00),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold)
+            };
+            clearPreferredButton.FlatAppearance.BorderSize = 0;
+            clearPreferredButton.Click += ClearPreferredButton_Click;
+
             // Add controls
             Controls.AddRange(new Control[] {
                 _titleLabel, instructionLabel, _layoutsListBox, selectionLabel,
                 _nameLabel, _nameTextBox, _descriptionLabel, _descriptionTextBox,
+                _preferredLabel, _setPreferredButton, clearPreferredButton,
                 _newButton, _saveButton, _loadButton, _deleteButton, _cancelButton
             });
         }
@@ -272,6 +314,39 @@ namespace DofusMiniTabber
         {
             DialogResult = DialogResult.Cancel;
             Close();
+        }
+
+        private void SetPreferredButton_Click(object? sender, EventArgs e)
+        {
+            if (_layoutsListBox.SelectedItem is LayoutItem item)
+            {
+                _currentPreferred      = item.Name;
+                NewPreferredLayout     = item.Name;
+                PreferredLayoutChanged = true;
+                UpdatePreferredLabel();
+                MessageBox.Show($"Layout '{item.Name}' marcado como preferido.\n\nUsa el botón '⭐ CARGAR PREFERIDO' en el menú principal para cargarlo.",
+                    "Layout Preferido", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show("Selecciona un layout de la lista primero.",
+                    "Selección Requerida", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void ClearPreferredButton_Click(object? sender, EventArgs e)
+        {
+            _currentPreferred      = null;
+            NewPreferredLayout     = null;
+            PreferredLayoutChanged = true;
+            UpdatePreferredLabel();
+        }
+
+        private void UpdatePreferredLabel()
+        {
+            _preferredLabel.Text = string.IsNullOrWhiteSpace(_currentPreferred)
+                ? "⭐ Preferido: (ninguno)"
+                : $"⭐ Preferido: {_currentPreferred}";
         }
 
         private class LayoutItem

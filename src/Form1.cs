@@ -15,6 +15,7 @@ namespace DofusMiniTabber
         private readonly ToolStripButton _captureButton = new("⚡ CAPTURAR VENTANASxx");
         private readonly ToolStripButton _savePositionButton = new("💾 GUARDAR LAYOUT");
         private readonly ToolStripButton _restorePositionButton = new("🔄 CARGAR LAYOUT");
+        private readonly ToolStripButton _loadPreferredButton = new("⭐ CARGAR PREFERIDO");
         private readonly ToolStripButton _manageLayoutsButton = new("📋 GESTIONAR LAYOUTS");
         private readonly ToolStripButton _hideMenuButton = new("👁️ OCULTAR MENÚ");
         private readonly ToolStripLabel _hotkeysLabel = new("[F1/F2] Ant/Sig | [F3] Menú | [F4] Guardar | [F5] Cargar | [F6] Gestionar | [Ctrl+Alt+1..9] Directo");
@@ -29,7 +30,7 @@ namespace DofusMiniTabber
         private bool _isCapturing;
         private TabPage? _previousTab;
         private TabPage? _draggedTab;
-        private string _lastSavedConfigurationName = "default";
+        private string? _preferredLayoutName = null;
 
         // IDs de Hotkeys
         private const int WM_HOTKEY = 0x0312;
@@ -183,6 +184,7 @@ namespace DofusMiniTabber
             _captureButton.Click         += (_, _) => CaptureWindows();
             _savePositionButton.Click    += (_, _) => SaveCurrentPositions();
             _restorePositionButton.Click += (_, _) => QuickRestoreLayout();
+            _loadPreferredButton.Click   += (_, _) => LoadPreferredLayout();
             _manageLayoutsButton.Click   += (_, _) => OpenLayoutManager();
             _hideMenuButton.Click        += (_, _) => ToggleFloatingMenu();
 
@@ -192,6 +194,7 @@ namespace DofusMiniTabber
             _floatingToolbar.Items.Add(new ToolStripSeparator());
             _floatingToolbar.Items.Add(_savePositionButton);
             _floatingToolbar.Items.Add(_restorePositionButton);
+            _floatingToolbar.Items.Add(_loadPreferredButton);
             _floatingToolbar.Items.Add(_manageLayoutsButton);
             _floatingToolbar.Items.Add(new ToolStripSeparator());
             _floatingToolbar.Items.Add(_hideMenuButton);
@@ -220,6 +223,7 @@ namespace DofusMiniTabber
                 ResizeActiveEmbeddedWindow();
             };
 
+            UpdatePreferredButton();
             ResumeLayout(true);
         }
 
@@ -706,7 +710,7 @@ namespace DofusMiniTabber
         {
             try
             {
-                using var layoutManager = new LayoutSelectorForm();
+                using var layoutManager = new LayoutSelectorForm(_preferredLayoutName);
                 layoutManager.ShowDialog(this);
 
                 if (layoutManager.DialogResult == DialogResult.OK)
@@ -715,6 +719,13 @@ namespace DofusMiniTabber
                         RestoreLayout(layoutManager.SelectedLayout!);
                     else
                         SaveLayout(layoutManager.SelectedLayout!);
+                }
+
+                // Si el usuario cambió el layout preferido, actualizarlo
+                if (layoutManager.PreferredLayoutChanged)
+                {
+                    _preferredLayoutName = layoutManager.NewPreferredLayout;
+                    UpdatePreferredButton();
                 }
             }
             catch (Exception ex)
@@ -807,7 +818,45 @@ namespace DofusMiniTabber
             }
         }
 
-        private void RestoreSavedPositions() => RestoreLayout(_lastSavedConfigurationName);
+        private void LoadPreferredLayout()
+        {
+            if (string.IsNullOrWhiteSpace(_preferredLayoutName))
+            {
+                MessageBox.Show(
+                    "No hay ningún layout preferido configurado.\n\nUsa '📋 GESTIONAR LAYOUTS' y marca un layout como preferido.",
+                    "Sin Layout Preferido", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            RestoreLayout(_preferredLayoutName);
+        }
+
+        public void SetPreferredLayout(string? layoutName)
+        {
+            _preferredLayoutName = layoutName;
+            UpdatePreferredButton();
+        }
+
+        private void UpdatePreferredButton()
+        {
+            if (string.IsNullOrWhiteSpace(_preferredLayoutName))
+            {
+                _loadPreferredButton.Text        = "⭐ CARGAR PREFERIDO";
+                _loadPreferredButton.ToolTipText = "Ningún layout preferido configurado";
+                _loadPreferredButton.Enabled     = true;
+            }
+            else
+            {
+                _loadPreferredButton.Text        = $"⭐ {_preferredLayoutName}";
+                _loadPreferredButton.ToolTipText = $"Cargar layout preferido: {_preferredLayoutName}";
+                _loadPreferredButton.Enabled     = true;
+            }
+        }
+
+        private void RestoreSavedPositions()
+        {
+            if (!string.IsNullOrWhiteSpace(_preferredLayoutName))
+                RestoreLayout(_preferredLayoutName);
+        }
 
         // ── Cleanup ───────────────────────────────────────────────────────
         private void OnFormClosingRestoreWindows(object? sender, FormClosingEventArgs e)
