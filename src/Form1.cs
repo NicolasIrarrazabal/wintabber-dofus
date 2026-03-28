@@ -12,7 +12,7 @@ namespace DofusMiniTabber
     {
         private readonly ToolStrip _toolbar = new();
         private readonly ToolStrip _floatingToolbar = new();
-        private readonly ToolStripButton _captureButton = new("⚡ CAPTURAR VENTANAS");
+        private readonly ToolStripButton _captureButton = new("⚡ CAPTURAR VENTANASxx");
         private readonly ToolStripButton _savePositionButton = new("💾 GUARDAR LAYOUT");
         private readonly ToolStripButton _restorePositionButton = new("🔄 CARGAR LAYOUT");
         private readonly ToolStripButton _manageLayoutsButton = new("📋 GESTIONAR LAYOUTS");
@@ -37,7 +37,7 @@ namespace DofusMiniTabber
         private const int HOTKEY_ID_SAVE_POSITION = 4;
         private const int HOTKEY_ID_RESTORE_POSITION = 5;
         private const int HOTKEY_ID_MANAGE_LAYOUTS = 6;
-        private const int HOTKEY_ID_NUM_START = 10; // IDs 10 al 18 para teclas 1-9
+        private const int HOTKEY_ID_NUM_START = 10;
 
         // Modificadores
         private const uint MOD_ALT = 0x0001;
@@ -57,12 +57,36 @@ namespace DofusMiniTabber
         private const int SWP_NOSIZE = 0x0001;
         private const int SWP_FRAMECHANGED = 0x0020;
         private const int SWP_NOREDRAW = 0x0008;
+        private const int SWP_NOCOPYBITS = 0x0100;
 
         // RedrawWindow flags
         private const uint RDW_FRAME = 0x0400;
         private const uint RDW_INVALIDATE = 0x0001;
         private const uint RDW_UPDATENOW = 0x0100;
         private const uint RDW_ALLCHILDREN = 0x0080;
+
+        [DllImport("user32.dll")] private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+        [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
+        [DllImport("user32.dll")] private static extern bool ScreenToClient(IntPtr hWnd, ref POINT lpPoint);
+        private const int SM_CXFRAME = 32;
+        private const int SM_CYFRAME = 33;
+        private const int SM_CYCAPTION = 4;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct POINT
+        {
+            public int X;
+            public int Y;
+        }
 
         public Form1()
         {
@@ -71,7 +95,6 @@ namespace DofusMiniTabber
             RegisterBaseHotkeys();
             RegisterNumberHotkeys();
 
-            // Timer para actualizar títulos dinámicos cada 300ms
             _updateTitleTimer.Interval = 300;
             _updateTitleTimer.Tick += (_, _) => UpdateDynamicTitles();
             _updateTitleTimer.Start();
@@ -84,8 +107,6 @@ namespace DofusMiniTabber
             WindowState = FormWindowState.Maximized;
             KeyPreview = true;
             FormClosing += OnFormClosingRestoreWindows;
-            
-            // Configurar para que la barra flotante esté siempre encima
             TopMost = false;
         }
 
@@ -93,26 +114,30 @@ namespace DofusMiniTabber
         {
             SuspendLayout();
 
-            // Configurar toolbar principal (vacío, solo para estructura)
+            // Toolbar principal (oculto, solo estructura)
             _toolbar.Dock = DockStyle.Top;
             _toolbar.Height = 1;
             _toolbar.Visible = false;
 
-            // Configurar barra flotante
+            // ── FIX: Toolbar correctamente anclado en la parte superior ──
+            // Antes estaba en Location=(0,0) superponiéndose sobre el contenido de las tabs,
+            // cortando el menú superior del juego. Con DockStyle.Top el TabControl con Fill
+            // arranca automáticamente debajo del toolbar.
+            _floatingToolbar.Dock = DockStyle.Top;
             _floatingToolbar.BackColor = Color.FromArgb(0x1E, 0x2A, 0x38);
             _floatingToolbar.ForeColor = Color.White;
             _floatingToolbar.GripStyle = ToolStripGripStyle.Hidden;
             _floatingToolbar.CanOverflow = false;
             _floatingToolbar.Stretch = true;
-            
+
             _captureButton.Click += (_, _) => CaptureWindows();
             _savePositionButton.Click += (_, _) => SaveCurrentPositions();
             _restorePositionButton.Click += (_, _) => QuickRestoreLayout();
             _manageLayoutsButton.Click += (_, _) => OpenLayoutManager();
             _hideMenuButton.Click += (_, _) => ToggleFloatingMenu();
-            
+
             _hotkeysLabel.Alignment = ToolStripItemAlignment.Right;
-            
+
             _floatingToolbar.Items.Add(_captureButton);
             _floatingToolbar.Items.Add(new ToolStripSeparator());
             _floatingToolbar.Items.Add(_savePositionButton);
@@ -123,24 +148,23 @@ namespace DofusMiniTabber
             _floatingToolbar.Items.Add(new ToolStripSeparator());
             _floatingToolbar.Items.Add(_hotkeysLabel);
 
-            // Posicionar barra flotante en la parte superior de la pantalla
-            PositionFloatingToolbar();
-
             _tabs.Dock = DockStyle.Fill;
             _tabs.SelectedIndexChanged += (_, _) => OnTabChanged();
             _tabs.MouseDown += Tabs_MouseDown;
             _tabs.MouseMove += Tabs_MouseMove;
             _tabs.MouseUp += Tabs_MouseUp;
 
-            // Menú contextual
             var liberarItem = new ToolStripMenuItem("Liberar", null, (_, _) => ReleaseCurrentTab());
             var cerrarItem = new ToolStripMenuItem("Cerrar", null, (_, _) => CloseCurrentTab());
             _tabMenu.Items.Add(liberarItem);
             _tabMenu.Items.Add(cerrarItem);
 
-            Controls.Add(_toolbar);
+            // ── FIX: El orden de Add importa para el dock layout.
+            // _floatingToolbar (DockStyle.Top) debe añadirse ANTES que _tabs (DockStyle.Fill)
+            // para que Fill calcule el espacio restante correctamente.
             Controls.Add(_tabs);
             Controls.Add(_floatingToolbar);
+            Controls.Add(_toolbar);
 
             _resizeDebounceTimer.Interval = 60;
             _resizeDebounceTimer.Tick += (_, _) => { _resizeDebounceTimer.Stop(); ResizeActiveEmbeddedWindow(); };
@@ -148,27 +172,14 @@ namespace DofusMiniTabber
             ResumeLayout(true);
         }
 
-        private void PositionFloatingToolbar()
-        {
-            _floatingToolbar.Location = new Point(0, 0);
-            _floatingToolbar.Width = ClientSize.Width;
-        }
-
         private void ToggleFloatingMenu()
         {
             _menuVisible = !_menuVisible;
             _floatingToolbar.Visible = _menuVisible;
             _hideMenuButton.Text = _menuVisible ? "👁️ OCULTAR MENÚ" : "👁️‍🗨️ MOSTRAR MENÚ";
-            BeginInvoke(ScheduleResizeActiveTab);
-        }
-
-        protected override void OnResize(EventArgs e)
-        {
-            base.OnResize(e);
-            if (_floatingToolbar != null)
-            {
-                PositionFloatingToolbar();
-            }
+            // Al cambiar visibilidad del toolbar, forzar resize de la ventana activa
+            // para que llene correctamente el espacio disponible
+            ScheduleResizeActiveTab();
         }
 
         // ── Drag & drop tabs ──────────────────────────────────────────────
@@ -312,15 +323,10 @@ namespace DofusMiniTabber
         private void JumpToTab(int index)
         {
             if (index >= 0 && index < _tabs.TabCount)
-            {
                 _tabs.SelectedIndex = index;
-            }
         }
 
-        private void ToggleMenu()
-        {
-            ToggleFloatingMenu();
-        }
+        private void ToggleMenu() => ToggleFloatingMenu();
 
         private void NextTab()
         {
@@ -372,11 +378,13 @@ namespace DofusMiniTabber
             var stripped = originalStyle & ~WS_CAPTION & ~WS_THICKFRAME & ~WS_BORDER & ~WS_DLGFRAME;
             SetWindowLong(hwnd, GWL_STYLE, stripped);
 
+            // Aplicar cambio de frame ANTES de cambiar el padre para que Windows
+            // recalcule el área no-cliente correctamente
+            SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+
             SetParent(hwnd, panel.Handle);
-            MoveWindow(hwnd, 0, 0, panel.ClientSize.Width, panel.ClientSize.Height, true);
             ShowWindow(hwnd, SW_SHOW);
-            SetWindowPos(hwnd, IntPtr.Zero, 0, 0, panel.ClientSize.Width, panel.ClientSize.Height,
-                SWP_NOZORDER | SWP_FRAMECHANGED);
 
             _embeddedByHwnd[hwnd] = new EmbeddedWindowInfo(hwnd, panel, tab, originalStyle);
 
@@ -386,6 +394,18 @@ namespace DofusMiniTabber
                 if (info != null) ResizeWindowIfNeeded(info);
             };
 
+            // ── FIX: Resize diferido para que el panel tenga su tamaño final
+            // antes de intentar redimensionar la ventana embebida.
+            // Sin esto, panel.ClientSize puede devolver Size.Empty en el primer intento.
+            BeginInvoke(() =>
+            {
+                if (_embeddedByHwnd.TryGetValue(hwnd, out var info))
+                {
+                    info.LastKnownSize = Size.Empty; // forzar resize aunque el tamaño no haya "cambiado"
+                    ResizeWindowIfNeeded(info);
+                }
+            });
+
             ScheduleResizeActiveTab();
         }
 
@@ -393,14 +413,21 @@ namespace DofusMiniTabber
         {
             var panel = info.HostPanel;
             var hwnd = info.Hwnd;
+            var size = panel.ClientSize;
 
-            if (panel.ClientSize != info.LastKnownSize)
-            {
-                MoveWindow(hwnd, 0, 0, panel.ClientSize.Width, panel.ClientSize.Height, true);
-                SetWindowPos(hwnd, IntPtr.Zero, 0, 0, panel.ClientSize.Width, panel.ClientSize.Height,
-                    SWP_NOZORDER | SWP_FRAMECHANGED);
-                info.LastKnownSize = panel.ClientSize;
-            }
+            if (size.Width <= 0 || size.Height <= 0) return;
+            if (size == info.LastKnownSize) return;
+
+            MoveWindow(hwnd, 0, 0, size.Width, size.Height, true);
+            SetWindowPos(hwnd, IntPtr.Zero, 0, 0, size.Width, size.Height,
+                SWP_NOZORDER | SWP_FRAMECHANGED);
+
+            // ── FIX: Forzar redibujado completo incluyendo el frame y los hijos.
+            // Sin esto quedan bordes negros al cambiar de tab o redimensionar.
+            RedrawWindow(hwnd, IntPtr.Zero, IntPtr.Zero,
+                RDW_FRAME | RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+
+            info.LastKnownSize = size;
         }
 
         // ── Tab switching ─────────────────────────────────────────────────
@@ -420,6 +447,10 @@ namespace DofusMiniTabber
             var active = _embeddedByHwnd.Values.FirstOrDefault(v => v.TabPage == currentTab);
             if (active != null)
             {
+                // ── FIX: Resetear el tamaño conocido para forzar un resize completo
+                // al cambiar de tab. Sin esto, si el panel no cambió de tamaño,
+                // ResizeWindowIfNeeded salía sin hacer nada y quedaban bordes negros.
+                active.LastKnownSize = Size.Empty;
                 ResizeWindowIfNeeded(active);
             }
 
@@ -437,10 +468,11 @@ namespace DofusMiniTabber
             if (_tabs.SelectedTab is null) return;
             var active = _embeddedByHwnd.Values.FirstOrDefault(v => v.TabPage == _tabs.SelectedTab);
             if (active is null) return;
+            active.LastKnownSize = Size.Empty; // forzar resize
             ResizeWindowIfNeeded(active);
         }
 
-        // ── Dynamic title update ─────────────────────────────────────────
+        // ── Dynamic title update ──────────────────────────────────────────
         private void UpdateDynamicTitles()
         {
             foreach (var info in _embeddedByHwnd.Values)
@@ -454,7 +486,7 @@ namespace DofusMiniTabber
             }
         }
 
-        // ── Window Position Management ───────────────────────────────────────
+        // ── Window Position Management ────────────────────────────────────
         private void SaveCurrentPositions()
         {
             try
@@ -547,13 +579,11 @@ namespace DofusMiniTabber
                 nameDialog.CancelButton = cancelButton;
 
                 if (nameDialog.ShowDialog(this) == DialogResult.OK && !string.IsNullOrWhiteSpace(nameTextBox.Text))
-                {
                     SaveLayoutWithName(nameTextBox.Text, descTextBox.Text);
-                }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al mostrar diálogo de guardado: {ex.Message}", 
+                MessageBox.Show($"Error al mostrar diálogo de guardado: {ex.Message}",
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -563,7 +593,7 @@ namespace DofusMiniTabber
             try
             {
                 var positions = new List<WindowPositionManager.WindowPosition>();
-                
+
                 for (int i = 0; i < _tabs.TabCount; i++)
                 {
                     var tabPage = _tabs.TabPages[i];
@@ -578,14 +608,14 @@ namespace DofusMiniTabber
                         });
                     }
                 }
-                
+
                 WindowPositionManager.SaveConfiguration(layoutName, positions, description);
-                MessageBox.Show($"Layout '{layoutName}' guardado con {positions.Count} ventanas.", 
+                MessageBox.Show($"Layout '{layoutName}' guardado con {positions.Count} ventanas.",
                     "Guardado Exitoso", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al guardar layout: {ex.Message}", 
+                MessageBox.Show($"Error al guardar layout: {ex.Message}",
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -600,13 +630,11 @@ namespace DofusMiniTabber
                     MessageBox.Show("No hay layouts guardados.", "Sin Layouts", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
-
-                // Siempre mostrar el selector para que el usuario elija
                 OpenLayoutManager();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al restaurar layout: {ex.Message}", 
+                MessageBox.Show($"Error al restaurar layout: {ex.Message}",
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -617,22 +645,18 @@ namespace DofusMiniTabber
             {
                 using var layoutManager = new LayoutSelectorForm();
                 layoutManager.ShowDialog(this);
-                
+
                 if (layoutManager.DialogResult == DialogResult.OK)
                 {
                     if (layoutManager.ShouldLoad)
-                    {
                         RestoreLayout(layoutManager.SelectedLayout!);
-                    }
                     else
-                    {
                         SaveLayout(layoutManager.SelectedLayout!);
-                    }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al abrir gestor de layouts: {ex.Message}", 
+                MessageBox.Show($"Error al abrir gestor de layouts: {ex.Message}",
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -642,7 +666,7 @@ namespace DofusMiniTabber
             try
             {
                 var positions = new List<WindowPositionManager.WindowPosition>();
-                
+
                 for (int i = 0; i < _tabs.TabCount; i++)
                 {
                     var tabPage = _tabs.TabPages[i];
@@ -657,14 +681,14 @@ namespace DofusMiniTabber
                         });
                     }
                 }
-                
+
                 WindowPositionManager.SaveConfiguration(layoutName, positions);
-                MessageBox.Show($"Layout '{layoutName}' guardado con {positions.Count} ventanas.", 
+                MessageBox.Show($"Layout '{layoutName}' guardado con {positions.Count} ventanas.",
                     "Guardado Exitoso", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al guardar layout: {ex.Message}", 
+                MessageBox.Show($"Error al guardar layout: {ex.Message}",
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -676,7 +700,7 @@ namespace DofusMiniTabber
                 var config = WindowPositionManager.LoadConfiguration(layoutName);
                 if (config == null)
                 {
-                    MessageBox.Show($"No se encontró el layout '{layoutName}'.", 
+                    MessageBox.Show($"No se encontró el layout '{layoutName}'.",
                         "Layout No Encontrado", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
@@ -704,31 +728,24 @@ namespace DofusMiniTabber
                 }
 
                 foreach (var remainingTab in currentWindows.Values)
-                {
                     orderedTabs.Add(remainingTab);
-                }
 
                 _tabs.TabPages.Clear();
                 foreach (var tab in orderedTabs)
-                {
                     _tabs.TabPages.Add(tab);
-                }
 
                 ReorderTabs();
-                MessageBox.Show($"Layout '{layoutName}' restaurado exitosamente.", 
+                MessageBox.Show($"Layout '{layoutName}' restaurado exitosamente.",
                     "Restauración Exitosa", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error al restaurar layout: {ex.Message}", 
+                MessageBox.Show($"Error al restaurar layout: {ex.Message}",
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        private void RestoreSavedPositions()
-        {
-            RestoreLayout(_lastSavedConfigurationName);
-        }
+        private void RestoreSavedPositions() => RestoreLayout(_lastSavedConfigurationName);
 
         // ── Cleanup ───────────────────────────────────────────────────────
         private void OnFormClosingRestoreWindows(object? sender, FormClosingEventArgs e)
@@ -781,6 +798,7 @@ namespace DofusMiniTabber
         [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
         [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+        [DllImport("user32.dll", EntryPoint = "GetWindowRect")] private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
         [DllImport("user32.dll")] private static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
         [DllImport("user32.dll")] private static extern bool MoveWindow(IntPtr hWnd, int x, int y, int w, int h, bool repaint);
         [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
