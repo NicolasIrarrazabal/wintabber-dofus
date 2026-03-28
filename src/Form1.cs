@@ -23,6 +23,8 @@ namespace DofusMiniTabber
         private readonly System.Windows.Forms.Timer _resizeDebounceTimer = new();
         private readonly System.Windows.Forms.Timer _updateTitleTimer = new();
         private readonly Dictionary<IntPtr, EmbeddedWindowInfo> _embeddedByHwnd = new();
+        private readonly NotifyIcon _trayIcon = new();
+        private readonly ContextMenuStrip _trayMenu = new();
         private bool _menuVisible = true;
         private bool _isCapturing;
         private TabPage? _previousTab;
@@ -65,6 +67,10 @@ namespace DofusMiniTabber
         private const uint RDW_UPDATENOW = 0x0100;
         private const uint RDW_ALLCHILDREN = 0x0080;
 
+        // Process access
+        private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+        private const string TARGET_PROCESS_NAME = "Dofus Retro.exe";
+
         [DllImport("user32.dll")] private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
         [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
         [DllImport("user32.dll")] private static extern bool ScreenToClient(IntPtr hWnd, ref POINT lpPoint);
@@ -92,6 +98,7 @@ namespace DofusMiniTabber
         {
             ConfigureForm();
             BuildUi();
+            SetupTrayIcon();
             RegisterBaseHotkeys();
             RegisterNumberHotkeys();
 
@@ -108,6 +115,57 @@ namespace DofusMiniTabber
             KeyPreview = true;
             FormClosing += OnFormClosingRestoreWindows;
             TopMost = false;
+        }
+
+        private void SetupTrayIcon()
+        {
+            // Icono: usar el icono de la aplicación si existe, si no generar uno simple
+            _trayIcon.Icon = Icon ?? CreateFallbackIcon();
+            _trayIcon.Text = "Wintabber Dofus";
+            _trayIcon.Visible = true;
+
+            // Menú contextual del tray
+            var restoreItem = new ToolStripMenuItem("🖥️ Restaurar", null, (_, _) => RestoreFromTray());
+            var captureItem = new ToolStripMenuItem("⚡ Capturar ventanas", null, (_, _) => CaptureWindows());
+            var separatorItem = new ToolStripSeparator();
+            var exitItem = new ToolStripMenuItem("❌ Salir", null, (_, _) => ExitApplication());
+
+            _trayMenu.Items.Add(restoreItem);
+            _trayMenu.Items.Add(captureItem);
+            _trayMenu.Items.Add(separatorItem);
+            _trayMenu.Items.Add(exitItem);
+            _trayMenu.BackColor = Color.FromArgb(0x1E, 0x2A, 0x38);
+            _trayMenu.ForeColor = Color.White;
+            _trayMenu.RenderMode = ToolStripRenderMode.System;
+
+            _trayIcon.ContextMenuStrip = _trayMenu;
+
+            // Doble clic restaura la ventana
+            _trayIcon.DoubleClick += (_, _) => RestoreFromTray();
+        }
+
+        /// Crea un ícono simple en memoria (letra W sobre fondo azul oscuro) como fallback.
+        private static Icon CreateFallbackIcon()
+        {
+            using var bmp = new Bitmap(16, 16);
+            using var g = Graphics.FromImage(bmp);
+            g.Clear(Color.FromArgb(0x1E, 0x2A, 0x38));
+            using var font = new Font("Arial", 8f, FontStyle.Bold);
+            g.DrawString("W", font, Brushes.White, 1f, 1f);
+            return Icon.FromHandle(bmp.GetHicon());
+        }
+
+        private void RestoreFromTray()
+        {
+            Show();
+            WindowState = FormWindowState.Maximized;
+            Activate();
+        }
+
+        private void ExitApplication()
+        {
+            // Disparar el cierre normal para que se restauren las ventanas embebidas
+            Close();
         }
 
         private void BuildUi()
@@ -177,9 +235,25 @@ namespace DofusMiniTabber
             _menuVisible = !_menuVisible;
             _floatingToolbar.Visible = _menuVisible;
             _hideMenuButton.Text = _menuVisible ? "👁️ OCULTAR MENÚ" : "👁️‍🗨️ MOSTRAR MENÚ";
-            // Al cambiar visibilidad del toolbar, forzar resize de la ventana activa
-            // para que llene correctamente el espacio disponible
             ScheduleResizeActiveTab();
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+
+            if (WindowState == FormWindowState.Minimized)
+            {
+                // Ocultar la ventana al tray sin minimizarla a la barra de tareas
+                Hide();
+                _trayIcon.ShowBalloonTip(
+                    1500,
+                    "Wintabber Dofus",
+                    "La aplicación sigue ejecutándose en la bandeja del sistema.\nDoble clic para restaurar.",
+                    ToolTipIcon.Info);
+                return; // no llamar a PositionFloatingToolbar en este estado
+            }
+
         }
 
         // ── Drag & drop tabs ──────────────────────────────────────────────
@@ -275,8 +349,10 @@ namespace DofusMiniTabber
             {
                 var page = _tabs.TabPages[i];
                 var info = _embeddedByHwnd.Values.FirstOrDefault(v => v.TabPage == page);
-                string title = info != null ? GetWindowTitle(info.Hwnd) : page.Text;
-                page.Text = $"{i + 1}. {title.Replace(" - Dofus Retro", "").Trim()}";
+                string title = info != null
+                    ? (GetWindowTitle(info.Hwnd).Trim() is { Length: > 0 } t ? t : TARGET_PROCESS_NAME)
+                    : page.Text;
+                page.Text = $"{i + 1}. {title}";
             }
         }
 
@@ -350,11 +426,13 @@ namespace DofusMiniTabber
                 EnumWindows((hwnd, _) =>
                 {
                     if (!IsWindowVisible(hwnd)) return true;
-                    var title = GetWindowTitle(hwnd);
-                    if (!title.Contains("Dofus Retro", StringComparison.OrdinalIgnoreCase)) return true;
                     if (_embeddedByHwnd.ContainsKey(hwnd)) return true;
 
-                    EmbedWindow(hwnd, title);
+                    // Filtrar por nombre del ejecutable, no por título de ventana
+                    if (!IsDofusRetroProcess(hwnd)) return true;
+
+                    var title = GetWindowTitle(hwnd);
+                    EmbedWindow(hwnd, string.IsNullOrWhiteSpace(title) ? TARGET_PROCESS_NAME : title);
                     return true;
                 }, IntPtr.Zero);
             }
@@ -364,10 +442,38 @@ namespace DofusMiniTabber
             }
         }
 
+        /// <summary>
+        /// Devuelve true si la ventana pertenece al proceso "Dofus Retro.exe".
+        /// Usa QueryFullProcessImageName (Vista+) que no requiere privilegios elevados.
+        /// </summary>
+        private static bool IsDofusRetroProcess(IntPtr hwnd)
+        {
+            GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid == 0) return false;
+
+            var hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (hProcess == IntPtr.Zero) return false;
+
+            try
+            {
+                var sb = new StringBuilder(1024);
+                uint size = (uint)sb.Capacity;
+                if (!QueryFullProcessImageName(hProcess, 0, sb, ref size)) return false;
+
+                // Comparar solo el nombre del archivo, no la ruta completa
+                var exeName = System.IO.Path.GetFileName(sb.ToString());
+                return exeName.Equals(TARGET_PROCESS_NAME, StringComparison.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                CloseHandle(hProcess);
+            }
+        }
+
         private void EmbedWindow(IntPtr hwnd, string title)
         {
             var panel = new Panel { Dock = DockStyle.Fill, BackColor = Color.Black };
-            string cleanTitle = title.Replace(" - Dofus Retro", "").Trim();
+            string cleanTitle = string.IsNullOrWhiteSpace(title) ? TARGET_PROCESS_NAME : title.Trim();
             var tab = new TabPage($"{_tabs.TabCount + 1}. {cleanTitle}");
             tab.Controls.Add(panel);
             _tabs.TabPages.Add(tab);
@@ -477,12 +583,15 @@ namespace DofusMiniTabber
         {
             foreach (var info in _embeddedByHwnd.Values)
             {
-                string currentTitle = GetWindowTitle(info.Hwnd).Replace(" - Dofus Retro", "").Trim();
-                if (!info.TabPage.Text.EndsWith(currentTitle))
-                {
-                    int index = _tabs.TabPages.IndexOf(info.TabPage) + 1;
-                    info.TabPage.Text = $"{index}. {currentTitle}";
-                }
+                // El título puede ser cualquier cosa — ya no depende de "Dofus Retro" en él
+                string currentTitle = GetWindowTitle(info.Hwnd).Trim();
+                if (string.IsNullOrWhiteSpace(currentTitle))
+                    currentTitle = TARGET_PROCESS_NAME;
+
+                int index = _tabs.TabPages.IndexOf(info.TabPage) + 1;
+                string expected = $"{index}. {currentTitle}";
+                if (info.TabPage.Text != expected)
+                    info.TabPage.Text = expected;
             }
         }
 
@@ -600,7 +709,8 @@ namespace DofusMiniTabber
                     var info = _embeddedByHwnd.Values.FirstOrDefault(v => v.TabPage == tabPage);
                     if (info != null)
                     {
-                        string windowName = GetWindowTitle(info.Hwnd).Replace(" - Dofus Retro", "").Trim();
+                        string windowName = GetWindowTitle(info.Hwnd).Trim();
+                        if (string.IsNullOrWhiteSpace(windowName)) windowName = TARGET_PROCESS_NAME;
                         positions.Add(new WindowPositionManager.WindowPosition
                         {
                             WindowName = windowName,
@@ -673,7 +783,8 @@ namespace DofusMiniTabber
                     var info = _embeddedByHwnd.Values.FirstOrDefault(v => v.TabPage == tabPage);
                     if (info != null)
                     {
-                        string windowName = GetWindowTitle(info.Hwnd).Replace(" - Dofus Retro", "").Trim();
+                        string windowName = GetWindowTitle(info.Hwnd).Trim();
+                        if (string.IsNullOrWhiteSpace(windowName)) windowName = TARGET_PROCESS_NAME;
                         positions.Add(new WindowPositionManager.WindowPosition
                         {
                             WindowName = windowName,
@@ -712,7 +823,8 @@ namespace DofusMiniTabber
                     var info = _embeddedByHwnd.Values.FirstOrDefault(v => v.TabPage == tabPage);
                     if (info != null)
                     {
-                        string windowName = GetWindowTitle(info.Hwnd).Replace(" - Dofus Retro", "").Trim();
+                        string windowName = GetWindowTitle(info.Hwnd).Trim();
+                        if (string.IsNullOrWhiteSpace(windowName)) windowName = TARGET_PROCESS_NAME;
                         currentWindows[windowName] = tabPage;
                     }
                 }
@@ -750,6 +862,10 @@ namespace DofusMiniTabber
         // ── Cleanup ───────────────────────────────────────────────────────
         private void OnFormClosingRestoreWindows(object? sender, FormClosingEventArgs e)
         {
+            // Disponer el tray icon primero para que desaparezca del systray inmediatamente
+            _trayIcon.Visible = false;
+            _trayIcon.Dispose();
+
             foreach (var item in _embeddedByHwnd.Values)
             {
                 SetParent(item.Hwnd, IntPtr.Zero);
@@ -808,5 +924,9 @@ namespace DofusMiniTabber
         [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
         [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
         [DllImport("user32.dll")] private static extern bool RedrawWindow(IntPtr hWnd, IntPtr lpRectUpdate, IntPtr hrgnUpdate, uint flags);
+        [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+        [DllImport("kernel32.dll")] private static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+        [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr hObject);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, StringBuilder lpExeName, ref uint lpdwSize);
     }
 }
