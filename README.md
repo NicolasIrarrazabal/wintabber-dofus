@@ -2,8 +2,6 @@
 
 **Herramienta profesional para organizar y gestionar múltiples ventanas de Dofus Retro**
 
-![Wintabber Dofus](assets/banner.png)
-
 ## 🎯 Características Principales
 
 ### **Organización de Ventanas**
