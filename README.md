@@ -1,6 +1,7 @@
 # 🪟 Wintabber Dofus - Gestor de Ventanas
 
-**Herramienta profesional para organizar y gestionar múltiples ventanas de Dofus Retro**
+**Organiza y gestiona múltiples ventanas de Dofus Retro** sin retrasos ni errores de mouse.  
+Encapsula cada ventana, evitando que el cursor se descontrole o las animaciones de Alt+Escape se ralenticen, un problema común en apps como WindowTabs.
 
 ## 🎯 Características Principales
 
