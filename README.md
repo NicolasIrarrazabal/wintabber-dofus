@@ -30,7 +30,7 @@ Encapsula cada ventana, evitando que el cursor se descontrole perdiendo registro
 1. Descarga el ejecutable desde [Releases](../../releases)  
 2. Ejecuta `WintabberDofus.exe`  
 3. Presiona **"⚡ CAPTURAR VENTANAS"**  
-4. Usa F4/F5/F6 y Ctrl+Alt+1..9 para gestionar layouts
+4. Usa F1/F2 Para cambiar entre ventanas
 
 ## Requisitos
 
