@@ -6,7 +6,7 @@
 
 ## 🎯 Características Principales
 
-### 🪟 **Organización de Ventanas**
+### **Organización de Ventanas**
 - **Captura automática** de ventanas de Dofus Retro
 - **Incrustado en pestañas** - Todas las ventanas en una sola interfaz
 - **Drag & Drop** - Reorganiza pestañas arrastrando
