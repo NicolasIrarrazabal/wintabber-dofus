@@ -176,17 +176,6 @@ Si encuentras un error, por favor reporta en [Issues](../../issues) con:
 - **Sincronización automática** entre programas
 - **Importación/Exportación** de configuraciones
 
-## 📸 **Capturas de Pantalla**
-
-### 🎮 **Interfaz Principal:**
-*(Agrega capturas aquí)*
-
-### 📋 **Gestor de Layouts:**
-*(Agrega capturas aquí)*
-
-### ⌨️ **Hotkeys en Acción:**
-*(Agrega capturas aquí)*
-
 ## 🏗️ **Para Desarrolladores**
 
 ### 🛠️ **Compilar desde Código:**
@@ -209,40 +198,3 @@ src/
 ## 📄 **Licencia**
 
 Este proyecto está bajo la **Licencia MIT** - ver archivo [LICENSE](LICENSE) para detalles.
-
-### 🎯 **Permiso:**
-- ✅ Uso comercial
-- ✅ Modificación
-- ✅ Distribución
-- ✅ Uso privado
-- ❌ Responsabilidad limitada
-
-## 🙏 **Agradecimientos**
-
-- **Comunidad Dofus Retro** - Feedback y testing
-- **Microsoft .NET Team** - Excelente framework
-- **Contribuidores** - Mejoras y sugerencias
-- **Beta testers** - Reporte de bugs
-
-## 📞 **Contacto y Soporte**
-
-- **🐛 Issues**: [Reportar problemas](../../issues)
-- **💡 Sugerencias**: [Request features](../../issues/new?template=feature_request)
-- **📧 Email**: *(agrega tu email si quieres)*
-- **💬 Discord**: *(agrega tu servidor si tienes)*
-
----
-
-## ⭐ **¿Te gusta el proyecto?**
-
-**¡No olvides darle una estrella!** ⭐
-
-**Ayuda a más jugadores a organizar sus ventanas de Dofus** 🎮
-
----
-
-**🔥 Descarga la última versión en [Releases](../../releases) 🔥**
-
-**📚 Documentación completa en [Wiki](../../wiki) 📚**
-
-**💬 Únete a la comunidad en [Discussions](../../discussions) 💬**
