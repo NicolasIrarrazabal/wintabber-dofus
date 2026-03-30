@@ -1,4 +1,4 @@
-#  Proyecto fusionado (archivo personal)
+#  Proyecto fusionado
 
 Fue fusionado en:
 👉 https://github.com/NicolasIrarrazabal/DofusTabs
